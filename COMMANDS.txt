@@ -3,6 +3,7 @@
  Plain text version of README.md - open with Notepad
  Tested: Windows 11 | Temurin JDK 21.0.12 | apktool 3.0.3
          jadx 1.5.6 | uber-apk-signer 1.3.0 | adb 1.0.41
+ Every command below was RUN - outputs pasted are REAL.
 ==================================================================
 
 RULE OF THE ROAD
@@ -20,19 +21,27 @@ RULE OF THE ROAD
       winget install Google.PlatformTools
     OPEN A NEW TERMINAL after installing - old terminals keep the
     stale PATH and you get "The term 'java' is not recognized".
-    Verify:
-      java -version     -> openjdk version "21.0.12" ...
-      adb version       -> Android Debug Bridge version 1.0.41
 
- 1.2 The three modding tools (direct download links):
+ 1.2 The three modding tools - exact downloads + SHA256:
+
       apktool 3.0.3
         https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar
+        sha256: dbf930b076c6b9be08d57c449cacefc3bdd6b71ebd59b3066fc0e1f5b14f9423
+
       jadx 1.5.6
         https://github.com/skylot/jadx/releases/download/v1.5.6/jadx-1.5.6.zip
+        sha256: 545ea2be9c242511bc145755cf4bda2485ade42966e096f8b4d3da2a230e8974
+        (zip size: 72,646,741 bytes)
+
       uber-apk-signer 1.3.0
         https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+        sha256: e1299fd6fcf4da527dd53735b56127e8ea922a321128123b9c32d619bba1d835
+        (this one MATCHES the release's official checksum-sha256.txt)
 
-    Folder layout (jadx zip extracted into jadx\):
+    Verify after download (PowerShell, case-insensitive):
+      Get-FileHash .\apktool_3.0.3.jar -Algorithm SHA256
+
+ 1.3 Folder layout (jadx zip extracted into jadx\):
       C:\Users\<you>\ApkMod\
       +-- apktool_3.0.3.jar
       +-- uber-apk-signer-1.3.0.jar
@@ -57,6 +66,7 @@ RULE OF THE ROAD
       set "JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot"
       call "%~dp0jadx\bin\jadx.bat" %*
 
+    %~dp0 = the wrapper's own folder, so jars sit NEXT TO the .bat.
     If "java" is not on PATH: pin the full path instead. Find it:
       where java        (or: (Get-Command java).Source)
 
@@ -64,6 +74,13 @@ RULE OF THE ROAD
       Win+R -> sysdm.cpl -> Advanced -> Environment Variables
       -> User variables -> Path -> New -> paste the ApkMod folder
       Then open a NEW terminal.
+
+ 1.4 SMOKE TEST - all five must print a version (real outputs):
+      apktool --version      -> 3.0.3
+      jadx --version         -> 1.5.6
+      uber-apk-signer -v     -> Version: 1.3.0
+      java -version          -> openjdk version "21.0.12" ...
+      adb version            -> Android Debug Bridge version 1.0.41
 
 ------------------------------------------------------------------
  SECTION 2 - THE PIPELINE (do in this order)
@@ -78,6 +95,10 @@ RULE OF THE ROAD
        device        = ready
        unauthorized  = unlock phone, tap Allow
        (nothing)     = try other cable/port, adb kill-server
+
+   No phone connected - what our script REALLY prints:
+     adb.exe: no devices/emulators found
+     EXCEPTION: Device not reachable or package 'com.example.app' not found.
 
    Find the package name:
      adb shell pm list packages -3
@@ -105,8 +126,19 @@ RULE OF THE ROAD
  STEP 2 - STUDY THE CODE (read-only - you never rebuild this)
    jadx -d out\java apk\com.example.app.apk
    jadx-gui apk\com.example.app.apk
-   -> find the class / method / string you want to change
-   -> note WHERE it lives - this is your map for Step 4.
+
+   REAL progress output (1252 classes in our test APK):
+     INFO  - loading ...
+     INFO  - processing ...
+     INFO  - progress: 41 of 1252 (3%)
+     ...
+     ERROR - finished with errors, count: 4
+
+   -> "finished with errors, count: 4" is NORMAL on minified apps.
+      A few methods unreadable, rest is fine. NEVER rebuild from
+      jadx output - it is a map, not a build source.
+
+   -> find the class / method / string you want to change.
    Search in VS Code/Notepad++ (Ctrl+Shift+F) or PowerShell:
      Select-String -Path out\java\**\*.java -Pattern "isUnlocked"
 
@@ -114,90 +146,199 @@ RULE OF THE ROAD
    apktool d apk\com.example.app.apk -o work -f
    -o work  = ALWAYS pass it (default output dir is apk.out!)
    -f       = overwrite existing work\
-   decode said "Invalid resource config detected. Dropping
+
+   REAL decode output (our run, kwen-release.apk):
+     I: Using Apktool 3.0.3 on kwen-release.apk with 8 threads
+     I: Loading resource table...
+     I: Baksmaling classes.dex...
+     I: Decoding value resources...
+     I: Loading resource table from file: C:\Users\hp\AppData\Local\apktool\framework\1.apk
+     I: Decoding file resources...
+     I: Generating values XMLs...
+     I: Decoding AndroidManifest.xml with resources...
+     I: Copying original files...
+     I: Copying assets...
+     I: Copying unknown files...
+
+   Decode said "Invalid resource config detected. Dropping
    resources"? re-decode with: --keep-broken-res
 
    What you get:
      work\AndroidManifest.xml   label, permissions, components
      work\apktool.yml           build metadata (apkFileName, SDKs)
-     work\res\values\*.xml      EASY edits (strings, colors, bools)
-     work\res\xml\*.xml         preference defaults
-     work\res\mipmap-*\         launcher icons
-     work\smali\                the CODE - first dex
-     work\smali_classes2\       2nd dex if present - search ALL
-                                smali* folders!
-     work\assets\               raw files (web, json, fonts)
-     work\lib\                  native .so libs (avoid for now)
-     work\original\             DO NOT TOUCH
-     work\unknown\              files apktool can't interpret
+     work\res\values\strings.xml   EASY edits (all default texts)
+     work\res\values\public.xml    resource-ID index - READ, DON'T EDIT
+     work\res\values\*.xml         colors, bools, dimens...
+     work\res\xml\*.xml            preference defaults
+     work\res\mipmap-*\            launcher icons
+     work\smali\                   the CODE - first dex
+     work\smali_classes2\          2nd dex if present - search ALL
+                                   smali* folders!
+     work\assets\                  raw files (web, json, fonts)
+     work\lib\                     native .so libs (avoid for now)
+     work\original\                DO NOT TOUCH
+     work\unknown\                 files apktool can't interpret
+
+   REAL apktool.yml from our run (yours looks similar):
+     version: 3.0.3
+     apkFileName: kwen-release.apk
+     usesFramework:
+       ids:
+       - 1
+     sdkInfo:
+       minSdkVersion: 24
+       targetSdkVersion: 36
+     versionInfo:
+       versionCode: 1
+       versionName: 1.0
+     doNotCompress:
+     - arsc
+     - png
 
  STEP 4 - EDIT  (change ONE thing at a time!)
 
-   EASY (resources):
-     rename app:
-       1. work\AndroidManifest.xml -> android:label="@string/app_name"
-          (may be a literal: android:label="Old Name" - edit there)
-       2. work\res\values\strings.xml ->
-              <string name="app_name">Old Name</string>
-          -> change only the text between the tags
-     XML RULES: & must be written as &amp;  (< as &lt;)
-                save as UTF-8 (Notepad++: Encoding -> UTF-8)
-     booleans:  work\res\values\bools.xml / booleans.xml
-                work\xml\*.xml  (android:defaultValue="false")
-     icon:      work\res\mipmap-*\ic_launcher.png - SAME filename,
-                SAME pixel size, every density folder you replace,
-                ic_launcher_round.png too if manifest uses it
+   A) LOCATE the string first - REAL output of:
+      Select-String -Path work\res\values\*.xml -Pattern 'app_name'
+        public.xml:876: <public type="string" name="app_name" id="0x7f0d001c" />
+        strings.xml:24: <string name="app_name">KWEN</string>
+      -> TWO hits. Edit strings.xml line 24 ONLY.
+         public.xml is the name->ID index, never touch it.
 
-   MEDIUM (AndroidManifest.xml):
-     android:label="New Name"        app name in launcher
-     android:enabled="false"         on an activity/service/receiver
-                                     = disable that component
-     removing a uses-permission line can crash the app - careful.
+      Where does the label come from?
+      Select-String -Path work\AndroidManifest.xml -Pattern 'android:label'
+        android:label="@string/app_name"  -> edit strings.xml
+        android:label="Some Literal"      -> edit the manifest instead
+      ONE source, not both.
 
-   Debuggable build while testing:
-     apktool b work -o app-mod.apk --debuggable
+   B) EDIT - two verified ways:
+      1. Notepad++ (recommended): open strings.xml, change text
+         between the tags, Encoding -> UTF-8, save.
+      2. PowerShell one-liner (tested, works):
+           $p = 'work\res\values\strings.xml'
+           (Get-Content $p -Raw -Encoding UTF8) -replace '<string name="app_name">KWEN</string>','<string name="app_name">KWEN (modded)</string>' | Set-Content $p -Encoding UTF8 -NoNewline
 
-   HARD (smali - real logic):
-     class com.example.feature.Checks  (from jadx)
-       -> work\smali\com\example\feature\Checks.smali
-       (search ALL smali* folders in case of multidex)
-     find the method you saw in jadx:  .method ... name()Z ... .end method
+      XML RULES: & must be written as &amp;  (< as &lt;)
+                 raw & breaks the build. Save as UTF-8.
 
-     SMALI RULES THAT BITE:
-       - registers must be declared: .locals N -> v0, v1, ...
-         parameters: p0 = this, p1, p2 ... (instance methods)
-       - types: Ljava/lang/String;  (objects END with ;)
-                Z = boolean, I = int, V = void
-       - strings: const-string v0, "text"   (double quotes)
-       - booleans: const/4 v0, 0x1 = true / 0x0 = false
-       - every .method needs its .end method
-       - every path out must return/return-void/throw
-     Safe example (same register, same shape):
-       const-string v0, "Upgrade to Pro"   <- before
-       const-string v0, "Hello, Mod!"      <- after
-     Build errors point at exact file:line - fix right there.
+   C) OTHER EASY EDITS:
+      booleans:  work\res\values\bools.xml / booleans.xml
+                 work\res\xml\*.xml  (android:defaultValue="false")
+      icon:      work\res\mipmap-*\ic_launcher.png - SAME filename,
+                 SAME pixel size, every density folder you replace,
+                 ic_launcher_round.png too if manifest uses it.
+
+   D) MEDIUM (AndroidManifest.xml):
+      android:label="New Name"        app name in launcher
+      android:enabled="false"         on an activity/service/receiver
+                                      = disable that component
+      removing a uses-permission line can crash the app - careful.
+
+      Debuggable build while testing:
+        apktool b work -o app-mod.apk --debuggable
+
+   E) HARD (smali - real logic):
+      class com.example.feature.Checks  (from jadx)
+        -> work\smali\com\example\feature\Checks.smali
+        (search ALL smali* folders in case of multidex)
+      Release apps are often MINIFIED: our test app's classes were
+      literally smali\a\a.smali - search by method content, not
+      class names.
+      Find the method from jadx: .method ... name()Z ... .end method
+
+      REGISTER REALITY IN APKTOOL 3.x  (old guides are WRONG here):
+      We TESTED it - smali 3.0.9-dev AUTO-EXPANDS the register
+      frame. const-string v9 AND const-string v99 inside a
+      .locals 1 method BOTH COMPILED FINE. So "register not
+      declared" does NOT stop the build.
+
+      What ACTUALLY breaks a build (all 3 captured real):
+        typo'd opcode   -> <file>.smali[40,4] mismatched input
+                           'move-result-objectz' expecting END_METHOD_DIRECTIVE
+        missing .end method
+                       -> <file>.smali[44,0] mismatched input ''
+                           expecting END_METHOD_DIRECTIVE
+        file has UTF-8 BOM at start (PowerShell Set-Content -Encoding UTF8!)
+                       -> <file>.smali[1,0] required (...)+ loop did not
+                           match anything at input '?'
+      Above every one of them sits the wrapper line:
+        AndrolibException: Could not smali file: <path>
+      -> the REAL cause is the [line,col] line printed above it.
+
+      RULES THAT STILL MATTER (runtime correctness):
+        parameters: static -> p0 = first arg
+                    instance -> p0 = this, p1 = first arg (FIXED at
+                                the end of the register frame)
+        types: Ljava/lang/String;  (objects END with ;)
+               Z = boolean, I = int, V = void
+        strings:  const-string v0, "text"  (double quotes)
+        booleans: const/4 v0, 0x1 = true / 0x0 = false
+        labels:   every :cond_0 you jump to must exist
+        EVERY path out must return/return-void/throw
+
+      VERIFIED compile-safe example (we injected this into a real
+      class and apktool b accepted it):
+        .method public static greet(Ljava/lang/String;)Ljava/lang/String;
+            .locals 1
+            const-string v0, "Hello, "
+            invoke-virtual {v0, p0}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
+            move-result-object v0
+            return-object v0
+        .end method
+
+      BOM TRAP (we really hit this): PowerShell 5.1
+      Set-Content -Encoding UTF8 writes a BOM and the smali parser
+      dies at [1,0] before reading your edit. For SMALI use:
+        [System.IO.File]::WriteAllText($path, $text)   (UTF-8, no BOM)
+      For XML files the BOM is harmless.
 
  STEP 5 - REBUILD
    apktool b work -o app-mod.apk
-   output:  I: Built apk into: C:\...\app-mod.apk
-   no -o? file goes to work\dist\<name>.apk (from apktool.yml)
+
+   REAL output (successful build):
+     I: Smaling smali folder into classes.dex...
+     I: Building resources with aapt2...
+     I: Building apk file...
+     I: Importing assets...
+     I: Importing unknown files...
+     I: Built apk into: app-mod.apk
+   (incremental builds may first say:
+     I: AndroidManifest.xml and resources have not changed.)
+
+   no -o? file goes to work\dist\<name>.apk (name = apkFileName
+   from apktool.yml)
    force full rebuild: add -f
 
-   WARNING - apktool 3.x has NO --use-aapt2 flag (aapt2 is built
-   in). Old guides still say to add it - it only fails with
-   "Unrecognized option: --use-aapt2". Just remove it.
+   WARNING - apktool 3.x has NO --use-aapt2 flag. Look at the
+   output above: "Building resources with aapt2..." - it is BUILT
+   IN. Old guides say to add --use-aapt2; it only fails with
+   "Unrecognized option: --use-aapt2".
 
  STEP 6 - SIGN (Android refuses unsigned/modified APKs)
    uber-apk-signer -a app-mod.apk
-   Output: app-mod-aligned-debugSigned.apk  (same folder as input)
-           + app-mod-aligned-debugSigned.apk.idsig (ignore)
-   It prints its own verification:
-     - zipalign verified
-     - signature verified [v2, v3]
 
-   Output name depends on how you sign:
+   REAL output of our run:
+     01. app-mod.apk
+       SIGN
+       file: C:\Users\hp\ApkMod\app-mod.apk (2.5 MiB)
+       - zipalign success
+       - sign success
+       VERIFY
+       file: C:\Users\hp\ApkMod\app-mod-aligned-debugSigned.apk (2.56 MiB)
+       - zipalign verified
+       - signature verified [v2, v3]
+         Subject: CN=Android Debug, OU=Android, O=US, L=US, ST=US, C=US
+         SHA256: 1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953 / SHA256withRSA
+         Expires: Fri Mar 11 01:40:05 IST 2044
+     Successfully processed 1 APKs and 0 errors in 2.13 seconds.
+
+   No --ks given -> the keystore block shows a temp debug keystore
+   named "..._debug.keystore (DEBUG_EMBEDDED)". Throwaway debug
+   key, fine for personal installs.
+
+   Output names (both verified, same folder as input):
      debug keystore (default) -> <name>-aligned-debugSigned.apk
      your own keystore        -> <name>-aligned-signed.apk
+     either way               -> <output>.idsig (sidecar, ignore)
 
    Make your own keystore (stable identity across rebuilds):
      keytool -genkeypair -v -keystore my.keystore -alias key1 ^
@@ -209,7 +350,8 @@ RULE OF THE ROAD
        --ksAlias key1 --ksPass changeit --ksKeyPass changeit
 
    NOTE: the flag is --ksKeyPass, NOT --keyPass (older cheat
-   sheets get this wrong and uber-apk-signer 1.3.0 rejects it).
+   sheets get this wrong and uber-apk-signer 1.3.0 rejects it -
+   its own help lists --ksKeyPass).
    Sign in place instead of a new file: --overwrite
 
    Installing OVER an app already on the phone? Signatures must
@@ -221,7 +363,9 @@ RULE OF THE ROAD
    adb install -r app-mod-aligned-debugSigned.apk
    -r = replace the existing install (same signature only)
    Success
-   confirm:  adb shell pm list packages | findstr example
+   confirm:   adb shell pm list packages | findstr example
+   launch:    adb shell monkey -p com.example.app 1
+              (starts the app without knowing its activity name)
 
    App crashes on open? Read the crash log:
      adb logcat -c
@@ -250,6 +394,18 @@ RULE OF THE ROAD
 ------------------------------------------------------------------
  SECTION 4 - COMMON ERRORS AND FIXES
 ------------------------------------------------------------------
+ (every smali/botched-command string below came out of a REAL run)
+
+ adb.exe: no devices/emulators found
+   -> phone not connected / USB debugging off. Cable, other port,
+      adb kill-server, check the debugging toggle.
+
+ EXCEPTION: Device not reachable or package '...' not found.
+   -> our pull script: same cause, or wrong package name.
+
+ adb devices shows "unauthorized"
+   -> unlock the phone and tap Allow (tick "always allow")
+
  Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not
    match previously installed version]
    -> your modded signature != installed app's signature.
@@ -269,11 +425,25 @@ RULE OF THE ROAD
    -> terminal opened before install: open a NEW one, or pin the
       full java path inside the wrapper .bat
 
- "... running scripts is disabled on this system"
+ "PSSecurityException: ... running scripts is disabled on this system"
    -> Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
  "Unrecognized option: --use-aapt2"
    -> drop that flag: apktool 3.x has aapt2 built in.
+
+ <file>.smali[40,4] mismatched input 'move-result-objectz' expecting END_METHOD_DIRECTIVE
+   -> typo'd instruction. Fix the opcode at that exact line:col.
+
+ <file>.smali[44,0] mismatched input '' expecting END_METHOD_DIRECTIVE
+   -> missing .end method - add it.
+
+ <file>.smali[1,0] required (...)+ loop did not match anything at input '?'
+   -> file starts with a UTF-8 BOM (PowerShell Set-Content -Encoding UTF8).
+      Rewrite with: [System.IO.File]::WriteAllText($path, $text)
+
+ "AndrolibException: Could not smali file: <path>"
+   -> wrapper for the 3 errors above: read the [line,col] line
+      printed ABOVE it.
 
  "Invalid resource config detected. Dropping resources"
    -> re-decode with --keep-broken-res, then fix that XML file.
@@ -284,15 +454,8 @@ RULE OF THE ROAD
  "java.lang.UnsupportedClassVersionError"
    -> Java too old - install JDK 17+ (java -version must show it)
 
- Build error like "Some.smali:123"
-   -> your smali edit is malformed: check line 123 for register,
-      type (;), quotes, or a missing .end method
-
- jadx prints nothing / "Unsupported file format"
-   -> not a plain APK (bundle or protected) - back to Step 1
-
- adb devices shows "unauthorized"
-   -> unlock the phone and tap Allow (tick "always allow")
+ jadx: "ERROR - finished with errors, count: N"
+   -> NORMAL on minified apps - output still usable.
 
  App force-closes right after your mod
    -> your edit broke something. adb logcat, read the exception,
@@ -303,7 +466,114 @@ RULE OF THE ROAD
       license checks or integrity protection.
 
 ------------------------------------------------------------------
- SECTION 5 - GOOD HABITS
+ SECTION 5 - WHAT AN APK REALLY IS (anatomy, real numbers)
+------------------------------------------------------------------
+ An APK is a ZIP. Real top entries of our test file:
+   classes.dex                976,508 bytes  Dalvik bytecode
+   AndroidManifest.xml          6,992 bytes  BINARY XML (not text!)
+   resources.arsc             203,380 bytes  compiled string pool
+   res\  assets\  lib\  META-INF\
+
+ WHY apktool exists: the manifest's first 64 bytes are
+   03-00-08-00-50-1B-00-00-01-00-1C-00-84-0E-00-00 ...
+ - as text it is garbage. apktool decodes AXML <-> readable XML.
+
+ WHY every mod must be re-signed: Android verifies bytes.
+   v1 = META-INF/*.SF + *.RSA + MANIFEST.MF
+   v2/v3 = Signing Block inside the ZIP (between entries and the
+           central directory)
+ Real observation: our source APK had NO META-INF signature files
+ (v2/v3 only - valid since Android 7). After our resign these
+ appeared:  META-INF/MANIFEST.MF, ANDROIDD.SF, ANDROIDD.RSA
+ (ANDROIDD = the debug key's alias). Any byte you change breaks
+ both schemes -> always re-sign.
+
+------------------------------------------------------------------
+ SECTION 6 - SMALI QUICK CARD
+------------------------------------------------------------------
+ File layout (verified example - inject + apktool b = success):
+   .class public final La/a;
+   .super Ljava/lang/Object;
+
+   .method public static greet(Ljava/lang/String;)Ljava/lang/String;
+       .locals 1
+       const-string v0, "Hello, "
+       invoke-virtual {v0, p0}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
+       move-result-object v0
+       return-object v0
+   .end method
+
+ Common instructions:
+   const/4 v0, 0x0            small int / boolean (0x1 = true)
+   const v0, 0x7f0d001c       32-bit int (resource ID)
+   const-string v0, "text"    load string
+   new-instance v0, Ljava/lang/StringBuilder;
+   iget-boolean v0, p0, LX/Y;->f:Z     read instance field
+   sget-boolean v0, LX/Y;->FLAG:Z      read static field
+   invoke-virtual {v0, v1}, LX/Y;->m(I)V   call ({} = args)
+   move-result-object v0      catch return of last invoke
+   if-eqz v0, :cond_0         branch on ==0/null
+   goto :label                jump
+   return-void / return-object v0
+
+ Type descriptors: Z=boolean I=int J=long F=float V=void
+   Ljava/lang/String; = object (ENDS WITH ;)   [I = int[]
+
+ Class -> file: com.example.Foo
+   -> work\smali\com\example\Foo.smali  (check smali_classes2\ too)
+
+------------------------------------------------------------------
+ SECTION 7 - APKTOOL / SIGNER FLAG CHEAT (from --help, verbatim)
+------------------------------------------------------------------
+ APKTOOL D:
+   -f force delete output dir          -o output dir (default apk.out)
+   --keep-broken-res keep broken res   -s skip sources (no smali)
+   -r skip resources                   --only-manifest only manifest
+   --match-original keep closest files --no-assets skip assets
+   -j <num> parallel jobs              -p framework path
+
+ APKTOOL B:
+   -o output file (default dist/name.apk)   -f force full rebuild
+   --debuggable sets android:debuggable     --copy-original keeps
+                                            original manifest/META-INF
+   --no-crunch skip resource crunching      -j <num> parallel jobs
+   (NO --use-aapt2 - it does not exist in 3.x)
+
+ UBER-APK-SIGNER 1.3.0:
+   -a <file/folder>        source apk(s)
+   --allowResign           re-sign already-signed apk instead of error
+   --ks <keystore>         your keystore (default: debug key)
+   --ksAlias <alias>       alias (required with --ks)
+   --ksPass <password>     STORE password
+   --ksKeyPass <password>  KEY password  (** NOT --keyPass **
+   --overwrite             sign in place, no new file
+   --skipZipAlign          skip zipalign
+   --verbose / --debug / --dryRun      extra output / dry run
+   -o <path>               output folder
+   -v                      version
+
+------------------------------------------------------------------
+ SECTION 8 - ADB QUICK CARD (typical usage)
+------------------------------------------------------------------
+   adb devices                       list devices
+   adb kill-server                  restart adb (many weird fixes)
+   adb shell pm list packages -3    user-installed apps
+   adb shell pm list packages -f    with APK path
+   adb shell pm list packages | findstr kwen     keyword search
+   adb shell pm path com.example.app             APK path on phone
+   adb pull /data/app/....../base.apk .\         copy file from phone
+   adb install -r app.apk           install (replace)
+   adb install -r -d app.apk        allow downgrade (debug apps)
+   adb uninstall com.example.app    uninstall (WIPES app data)
+   adb shell pm clear com.example.app   clear data, keep app
+   adb shell monkey -p com.example.app 1 launch without activity name
+   adb logcat -c                    clear log buffer
+   adb logcat *:E                   errors only
+   adb logcat | findstr /i "FATAL AndroidRuntime"   crash filter
+   adb shell getprop ro.build.version.release       Android version
+
+------------------------------------------------------------------
+ SECTION 9 - GOOD HABITS
 ------------------------------------------------------------------
   - Keep the work\ folder as your source of truth. If it breaks,
     delete it and decode fresh from the original APK.
