@@ -1,6 +1,8 @@
 ==================================================================
  APK MODDING - COMPLETE COMMAND GUIDE (for beginners)
- Location: C:\Users\hp\ApkMod\COMMANDS.txt   (open with Notepad)
+ Plain text version of README.md - open with Notepad
+ Tested: Windows 11 | Temurin JDK 21.0.12 | apktool 3.0.3
+         jadx 1.5.6 | uber-apk-signer 1.3.0 | adb 1.0.41
 ==================================================================
 
 RULE OF THE ROAD
@@ -10,77 +12,223 @@ RULE OF THE ROAD
   - If an app protects its license/integrity, leave it alone.
 
 ------------------------------------------------------------------
- SECTION 1 - TOOLS (installed at C:\Users\hp\ApkMod)
+ SECTION 1 - ONE-TIME SETUP
 ------------------------------------------------------------------
- Java (Temurin 21)      - runs everything below
- apktool 3.0.3           - apktool.bat          - decode + rebuild
- jadx 1.5.6              - jadx.bat             - decompile to Java
- jadx-gui                - jadx-gui.bat         - same, but in a GUI
- uber-apk-signer 1.3.0   - uber-apk-signer.bat  - align + sign
- adb                     - talk to your phone (pull/install)
- pull-apk.ps1            - fetch an APK from your phone
 
- NOTE: open a NEW terminal. Old terminals opened before install
- won't see the new commands until restarted.
+ 1.1 Java + adb (PowerShell, run once):
+      winget install EclipseAdoptium.Temurin.21.JDK
+      winget install Google.PlatformTools
+    OPEN A NEW TERMINAL after installing - old terminals keep the
+    stale PATH and you get "The term 'java' is not recognized".
+    Verify:
+      java -version     -> openjdk version "21.0.12" ...
+      adb version       -> Android Debug Bridge version 1.0.41
+
+ 1.2 The three modding tools (direct download links):
+      apktool 3.0.3
+        https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar
+      jadx 1.5.6
+        https://github.com/skylot/jadx/releases/download/v1.5.6/jadx-1.5.6.zip
+      uber-apk-signer 1.3.0
+        https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+
+    Folder layout (jadx zip extracted into jadx\):
+      C:\Users\<you>\ApkMod\
+      +-- apktool_3.0.3.jar
+      +-- uber-apk-signer-1.3.0.jar
+      +-- jadx\bin\jadx.bat, jadx-gui.bat
+      +-- apktool.bat   jadx.bat   jadx-gui.bat   uber-apk-signer.bat
+      +-- pull-apk.ps1
+      +-- apk\     (pulled APKs land here)
+      +-- work\    (decoded project - made by apktool d)
+
+    Wrapper files (one small .bat per tool):
+
+      :: apktool.bat
+      @echo off
+      java -jar "%~dp0apktool_3.0.3.jar" %*
+
+      :: uber-apk-signer.bat
+      @echo off
+      java -jar "%~dp0uber-apk-signer-1.3.0.jar" %*
+
+      :: jadx.bat
+      @echo off
+      set "JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot"
+      call "%~dp0jadx\bin\jadx.bat" %*
+
+    If "java" is not on PATH: pin the full path instead. Find it:
+      where java        (or: (Get-Command java).Source)
+
+    Optional - add ApkMod to PATH:
+      Win+R -> sysdm.cpl -> Advanced -> Environment Variables
+      -> User variables -> Path -> New -> paste the ApkMod folder
+      Then open a NEW terminal.
 
 ------------------------------------------------------------------
  SECTION 2 - THE PIPELINE (do in this order)
 ------------------------------------------------------------------
 
- STEP 1 - GET THE APK  (phone: enable USB debugging first)
-   cd C:\Users\hp\ApkMod
-   .\pull-apk.ps1 com.example.app
-   Result: apk\com.example.app.apk
-   Use single-APK apps only - the script warns about splits.
+ STEP 1 - GET THE APK
+   Phone: Settings -> About phone -> tap "Build number" 7x
+          -> Developer options -> USB debugging ON
+
+   Check the connection:
+     adb devices
+       device        = ready
+       unauthorized  = unlock phone, tap Allow
+       (nothing)     = try other cable/port, adb kill-server
+
+   Find the package name:
+     adb shell pm list packages -3
+     adb shell pm list packages | findstr keyword
+     output looks like:  package:com.example.app
+     (strip the "package:" prefix)
+
+   Pull it:
+     cd C:\Users\<you>\ApkMod
+     .\pull-apk.ps1 com.example.app
+     Result: apk\com.example.app.apk
+
+   Script refused with "... running scripts is disabled on this
+   system"? Run once:
+     Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+   Manual pull (same thing the script does):
+     adb shell pm path com.example.app
+     adb pull /data/app/....../base.apk apk\com.example.app.apk
+
+   SPLIT APK RULE: "pm path" prints ONE line = single APK, MULTIPLE
+   lines = split bundle. First mods: single-APK apps only
+   (F-Droid apps are usually single). The script warns you.
 
  STEP 2 - STUDY THE CODE (read-only - you never rebuild this)
-   jadx -d out\java app.apk
-   jadx-gui app.apk
+   jadx -d out\java apk\com.example.app.apk
+   jadx-gui apk\com.example.app.apk
    -> find the class / method / string you want to change
    -> note WHERE it lives - this is your map for Step 4.
+   Search in VS Code/Notepad++ (Ctrl+Shift+F) or PowerShell:
+     Select-String -Path out\java\**\*.java -Pattern "isUnlocked"
 
  STEP 3 - DECODE (turn the APK into editable files)
-   apktool d app.apk -o work
+   apktool d apk\com.example.app.apk -o work -f
+   -o work  = ALWAYS pass it (default output dir is apk.out!)
+   -f       = overwrite existing work\
+   decode said "Invalid resource config detected. Dropping
+   resources"? re-decode with: --keep-broken-res
+
    What you get:
-     work\AndroidManifest.xml   app name, permissions, components
-     work\res\values\*.xml      EASY edits (strings, colors, toggles)
-     work\smali\                the CODE (hard edits live here)
+     work\AndroidManifest.xml   label, permissions, components
+     work\apktool.yml           build metadata (apkFileName, SDKs)
+     work\res\values\*.xml      EASY edits (strings, colors, bools)
+     work\res\xml\*.xml         preference defaults
+     work\res\mipmap-*\         launcher icons
+     work\smali\                the CODE - first dex
+     work\smali_classes2\       2nd dex if present - search ALL
+                                smali* folders!
      work\assets\               raw files (web, json, fonts)
      work\lib\                  native .so libs (avoid for now)
      work\original\             DO NOT TOUCH
+     work\unknown\              files apktool can't interpret
 
  STEP 4 - EDIT  (change ONE thing at a time!)
-   EASY   : work\res\values\strings.xml    (app name, all texts)
-            work\res\values\booleans.xml   (on/off defaults)
-            work\res\values\colors.xml     (colors)
-            icon swap: work\res\mipmap-*\ic_launcher.png
-                       (keep exact same name + size)
-   MEDIUM : work\AndroidManifest.xml       (label, permissions)
-   HARD   : work\smali\...\Something.smali (real logic - find the
-            method first in jadx, then edit the same method here)
+
+   EASY (resources):
+     rename app:
+       1. work\AndroidManifest.xml -> android:label="@string/app_name"
+          (may be a literal: android:label="Old Name" - edit there)
+       2. work\res\values\strings.xml ->
+              <string name="app_name">Old Name</string>
+          -> change only the text between the tags
+     XML RULES: & must be written as &amp;  (< as &lt;)
+                save as UTF-8 (Notepad++: Encoding -> UTF-8)
+     booleans:  work\res\values\bools.xml / booleans.xml
+                work\xml\*.xml  (android:defaultValue="false")
+     icon:      work\res\mipmap-*\ic_launcher.png - SAME filename,
+                SAME pixel size, every density folder you replace,
+                ic_launcher_round.png too if manifest uses it
+
+   MEDIUM (AndroidManifest.xml):
+     android:label="New Name"        app name in launcher
+     android:enabled="false"         on an activity/service/receiver
+                                     = disable that component
+     removing a uses-permission line can crash the app - careful.
+
+   Debuggable build while testing:
+     apktool b work -o app-mod.apk --debuggable
+
+   HARD (smali - real logic):
+     class com.example.feature.Checks  (from jadx)
+       -> work\smali\com\example\feature\Checks.smali
+       (search ALL smali* folders in case of multidex)
+     find the method you saw in jadx:  .method ... name()Z ... .end method
+
+     SMALI RULES THAT BITE:
+       - registers must be declared: .locals N -> v0, v1, ...
+         parameters: p0 = this, p1, p2 ... (instance methods)
+       - types: Ljava/lang/String;  (objects END with ;)
+                Z = boolean, I = int, V = void
+       - strings: const-string v0, "text"   (double quotes)
+       - booleans: const/4 v0, 0x1 = true / 0x0 = false
+       - every .method needs its .end method
+       - every path out must return/return-void/throw
+     Safe example (same register, same shape):
+       const-string v0, "Upgrade to Pro"   <- before
+       const-string v0, "Hello, Mod!"      <- after
+     Build errors point at exact file:line - fix right there.
 
  STEP 5 - REBUILD
    apktool b work -o app-mod.apk
-   If resource errors, try:
-   apktool b work -o app-mod.apk --use-aapt2
+   output:  I: Built apk into: C:\...\app-mod.apk
+   no -o? file goes to work\dist\<name>.apk (from apktool.yml)
+   force full rebuild: add -f
+
+   WARNING - apktool 3.x has NO --use-aapt2 flag (aapt2 is built
+   in). Old guides still say to add it - it only fails with
+   "Unrecognized option: --use-aapt2". Just remove it.
 
  STEP 6 - SIGN (Android refuses unsigned/modified APKs)
    uber-apk-signer -a app-mod.apk
-   Output: app-mod-aligned-debugSigned.apk
+   Output: app-mod-aligned-debugSigned.apk  (same folder as input)
+           + app-mod-aligned-debugSigned.apk.idsig (ignore)
+   It prints its own verification:
+     - zipalign verified
+     - signature verified [v2, v3]
+
+   Output name depends on how you sign:
+     debug keystore (default) -> <name>-aligned-debugSigned.apk
+     your own keystore        -> <name>-aligned-signed.apk
+
+   Make your own keystore (stable identity across rebuilds):
+     keytool -genkeypair -v -keystore my.keystore -alias key1 ^
+       -keyalg RSA -keysize 2048 -validity 10000 ^
+       -storepass changeit -keypass changeit ^
+       -dname "CN=Me, O=Me, C=IN"
+
+     uber-apk-signer -a app-mod.apk --ks my.keystore ^
+       --ksAlias key1 --ksPass changeit --ksKeyPass changeit
+
+   NOTE: the flag is --ksKeyPass, NOT --keyPass (older cheat
+   sheets get this wrong and uber-apk-signer 1.3.0 rejects it).
+   Sign in place instead of a new file: --overwrite
 
    Installing OVER an app already on the phone? Signatures must
-   match what is installed:
-   uber-apk-signer -a app-mod.apk --ks my.keystore --ksAlias key1 --ksPass secret --keyPass secret
-
-   ...or uninstall the original first (WARNING: loses app data):
-   adb uninstall com.example.app
+   match what is installed, and you don't have the developer's
+   keystore - so uninstall first (WARNING: loses app data):
+     adb uninstall com.example.app
 
  STEP 7 - INSTALL & TEST
    adb install -r app-mod-aligned-debugSigned.apk
+   -r = replace the existing install (same signature only)
+   Success
+   confirm:  adb shell pm list packages | findstr example
 
    App crashes on open? Read the crash log:
-   adb logcat -c
-   adb logcat | findstr /i "FATAL AndroidRuntime"
+     adb logcat -c
+     adb logcat | findstr /i "FATAL AndroidRuntime"
+   Look for: FATAL EXCEPTION: main
+             Process: com.example.app, PID: ...
+             <the exception line under it = your bug>
 
    Then go back to STEP 4. You do NOT decode again - just edit,
    rebuild, resign, reinstall. That is the loop.
@@ -88,10 +236,13 @@ RULE OF THE ROAD
 ------------------------------------------------------------------
  SECTION 3 - QUICK CHEAT SHEET (copy/paste)
 ------------------------------------------------------------------
+   adb devices
+   adb shell pm list packages | findstr example
    .\pull-apk.ps1 com.example.app
-   jadx -d out\java app.apk
-   apktool d app.apk -o work
-   :: ...edit files inside work\...
+
+   jadx -d out\java apk\com.example.app.apk
+   apktool d apk\com.example.app.apk -o work -f
+   :: ...edit ONE thing inside work\...
    apktool b work -o app-mod.apk
    uber-apk-signer -a app-mod.apk
    adb install -r app-mod-aligned-debugSigned.apk
@@ -99,24 +250,53 @@ RULE OF THE ROAD
 ------------------------------------------------------------------
  SECTION 4 - COMMON ERRORS AND FIXES
 ------------------------------------------------------------------
- INSTALL_FAILED_UPDATE_INCOMPATIBLE
-   -> your modded signature does not match the installed app.
-      Uninstall first (loses data) or sign with original keystore.
+ Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not
+   match previously installed version]
+   -> your modded signature != installed app's signature.
+      Uninstall first (loses data): adb uninstall com.example.app
+
+ Failure [INSTALL_FAILED_VERSION_DOWNGRADE]
+   -> your base APK is older than what's installed.
+      Uninstall first, then install.
 
  INSTALL_FAILED_ALREADY_EXISTS
    -> add the -r flag:  adb install -r something.apk
 
  INSTALL_PARSE_FAILED_NOT_APKS
-   -> file is an XAPK / bundle, not a normal APK.
+   -> file is an XAPK / APKS bundle, not a normal APK.
 
- apktool build fails on resources
-   -> add --use-aapt2 to the build command
+ "The term 'java' is not recognized..."
+   -> terminal opened before install: open a NEW one, or pin the
+      full java path inside the wrapper .bat
+
+ "... running scripts is disabled on this system"
+   -> Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+ "Unrecognized option: --use-aapt2"
+   -> drop that flag: apktool 3.x has aapt2 built in.
+
+ "Invalid resource config detected. Dropping resources"
+   -> re-decode with --keep-broken-res, then fix that XML file.
+
+ "brut.androlib.AndrolibException ... framework"
+   -> apktool if framework.apk
+
+ "java.lang.UnsupportedClassVersionError"
+   -> Java too old - install JDK 17+ (java -version must show it)
+
+ Build error like "Some.smali:123"
+   -> your smali edit is malformed: check line 123 for register,
+      type (;), quotes, or a missing .end method
+
+ jadx prints nothing / "Unsupported file format"
+   -> not a plain APK (bundle or protected) - back to Step 1
+
+ adb devices shows "unauthorized"
+   -> unlock the phone and tap Allow (tick "always allow")
 
  App force-closes right after your mod
-   -> your edit broke something. Check logcat, revert last change.
-
- apktool framework error
-   -> apktool if framework.apk
+   -> your edit broke something. adb logcat, read the exception,
+      revert the last change.
 
  App refuses to run modified / says not licensed
    -> STOP. The app is protecting itself. Do not try to defeat
@@ -125,10 +305,9 @@ RULE OF THE ROAD
 ------------------------------------------------------------------
  SECTION 5 - GOOD HABITS
 ------------------------------------------------------------------
- - Keep the work\ folder as your source of truth. If it breaks,
-   delete it and decode fresh from the original APK.
- - One change at a time - always build + test after each change.
- - Never distribute modded APKs.
- - Make your own keystore for signing apps you build:
-   keytool -genkeypair -v -keystore my.keystore -alias key1 -keyalg RSA -keysize 2048 -validity 10000 -storepass password -keypass password -dname "CN=Me, O=Me, C=IN"
+  - Keep the work\ folder as your source of truth. If it breaks,
+    delete it and decode fresh from the original APK.
+  - One change at a time - always build + test after each change.
+  - Keep the original APK untouched; work only on copies.
+  - Never distribute modded APKs.
 ==================================================================
