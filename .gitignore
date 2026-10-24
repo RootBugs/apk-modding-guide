@@ -1,0 +1,26 @@
+# Never commit APKs / build artifacts / secrets
+*.apk
+*.aab
+*.xapk
+*.apks
+*.idsig
+work/
+out/
+dist/
+test/
+apk/
+bin/
+
+# Signing material — never ever commit
+*.keystore
+*.jks
+*.pem
+*.p12
+*.jks.bak
+.env
+.env.local
+
+# Editor / OS noise
+.vscode/
+.DS_Store
+Thumbs.db
