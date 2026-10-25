@@ -18,25 +18,28 @@ adb 1.0.41
 
 ## 📑 Contents
 
-1. [Rules of the road](#️-rules-of-the-road)
-2. [One-time setup](#1️⃣-one-time-setup)
-   - [1.5 setup-check.ps1 — verify all at once](#15-verify-everything-at-once--setup-checkps1)
-   - [1.6 demo-run.ps1 — whole pipeline in one command](#16-the-60-second-demo--the-whole-pipeline-no-phone-needed)
-3. [Step 1 — Get the APK](#2️⃣-step-1--get-the-apk)
-4. [Step 2 — Study the code](#3️⃣-step-2--study-the-code-read-only)
-5. [Step 3 — Decode](#4️⃣-step-3--decode-into-editable-form)
-6. [Step 4 — Edit](#5️⃣-step-4--edit-one-change-at-a-time)
-7. [Step 5 — Rebuild](#6️⃣-step-5--rebuild)
-8. [Step 6 — Sign](#7️⃣-step-6--sign-mandatory)
-9. [Step 7 — Install & test](#8️⃣-step-7--install--test)
-10. [Cheat sheet](#-cheat-sheet)
-11. [Common errors (real strings)](#-common-errors--exact-strings--fixes)
-12. [Appendix A — APK anatomy](#appendix-a--apk-anatomy-what-you-really-editing)
-13. [Appendix B — smali quick card](#appendix-b--smali-quick-card)
-14. [Appendix C — full flag reference](#appendix-c--full-flag-reference)
-15. [Appendix D — adb quick card](#appendix-d--adb-quick-card)
+1. [Rules of the road](#rules)
+2. [One-time setup](#setup)
+   - [1.5 setup-check.ps1 — verify all at once](#setup-check)
+   - [1.6 demo-run.ps1 — whole pipeline in one command](#demo)
+3. [Step 1 — Get the APK](#step-get-apk)
+4. [Step 2 — Study the code](#step-study)
+5. [Step 3 — Decode](#step-decode)
+6. [Step 4 — Edit](#step-edit)
+7. [Step 5 — Rebuild](#step-rebuild)
+8. [Step 6 — Sign](#step-sign)
+9. [Step 7 — Install & test](#step-install)
+10. [Cheat sheet](#cheatsheet)
+11. [Common errors (real strings)](#errors)
+12. [Appendix A — APK anatomy](#anatomy)
+13. [Appendix B — smali quick card](#smali)
+14. [Appendix C — full flag reference](#flags)
+15. [Appendix D — adb quick card](#adb)
+16. [Contributor self-check](#contributor-check)
 
 ---
+
+<a id="rules"></a>
 
 ## ⚠️ Rules of the road
 
@@ -50,6 +53,8 @@ adb 1.0.41
   don't install them.
 
 ---
+
+<a id="setup"></a>
 
 ## 1️⃣ One-time setup
 
@@ -150,6 +155,8 @@ adb version            # → Android Debug Bridge version 1.0.41
 on. If any says `The term '…' is not recognized` → new terminal, or check the
 wrapper/PATH.)
 
+<a id="setup-check"></a>
+
 ### 1.5 Verify everything at once — `setup-check.ps1`
 
 Rather than checking all of the above by hand, run the guide's own
@@ -193,6 +200,8 @@ Exit code 0 = ready, 1 = something's broken.
 > PATH (opened before the JDK install). The wrappers don't care — they find
 > Java on disk — but `keytool` and plain `java` would fail **in that
 > terminal**, hence "open a NEW terminal".
+
+<a id="demo"></a>
 
 ### 1.6 The 60-second demo — the whole pipeline, no phone needed
 
@@ -272,6 +281,8 @@ then delete it and the `-demo.apk` files whenever.
 
 ---
 
+<a id="step-get-apk"></a>
+
 ## 2️⃣ Step 1 — Get the APK
 
 1. Phone: **Settings → About phone → tap "Build number" 7×** → back →
@@ -325,6 +336,8 @@ usually single-APK.
 
 ---
 
+<a id="step-study"></a>
+
 ## 3️⃣ Step 2 — Study the code (read-only)
 
 ```powershell
@@ -360,6 +373,8 @@ Select-String -Path out\java\**\*.java -Pattern "isUnlocked"
 ```
 
 ---
+
+<a id="step-decode"></a>
 
 ## 4️⃣ Step 3 — Decode into editable form
 
@@ -434,6 +449,8 @@ doNotCompress:
 ```
 
 ---
+
+<a id="step-edit"></a>
 
 ## 5️⃣ Step 4 — Edit (one change at a time!)
 
@@ -566,6 +583,8 @@ Change **one thing**, then build and test.
 
 ---
 
+<a id="step-rebuild"></a>
+
 ## 6️⃣ Step 5 — Rebuild
 
 ```powershell
@@ -592,6 +611,8 @@ I: Built apk into: app-mod.apk
   it, and it only fails with `Unrecognized option: --use-aapt2`.
 
 ---
+
+<a id="step-sign"></a>
 
 ## 7️⃣ Step 6 — Sign (mandatory)
 
@@ -664,6 +685,8 @@ adb uninstall com.example.app    # ⚠️ wipes that app's data — back up firs
 
 ---
 
+<a id="step-install"></a>
+
 ## 8️⃣ Step 7 — Install & test
 
 ```powershell
@@ -689,6 +712,8 @@ after that it's edit/build/sign forever.
 
 ---
 
+<a id="cheatsheet"></a>
+
 ## 📋 Cheat sheet
 
 ```powershell
@@ -707,6 +732,8 @@ adb install -r app-mod-aligned-debugSigned.apk    # install + test
 (Plain-text version for Notepad / offline: [`COMMANDS.txt`](COMMANDS.txt))
 
 ---
+
+<a id="errors"></a>
 
 ## 🧯 Common errors — exact strings → fixes
 
@@ -737,6 +764,8 @@ commands** or is a standard platform message.
 | app refuses to run modified / says not licensed | the app protects itself | **stop** — don't defeat license/integrity checks |
 
 ---
+
+<a id="anatomy"></a>
 
 ## Appendix A — APK anatomy (what you're really editing)
 
@@ -789,6 +818,8 @@ names.
 
 ---
 
+<a id="smali"></a>
+
 ## Appendix B — smali quick card
 
 Smali = readable disassembly of `classes.dex`. Layout of a file:
@@ -833,6 +864,8 @@ Method → file mapping: `com.example.Foo` → `smali\com\example\Foo.smali`
 → `.method … isUnlocked()Z`.
 
 ---
+
+<a id="flags"></a>
 
 ## Appendix C — full flag reference
 
@@ -899,6 +932,8 @@ Verbatim from each tool's own `--help` (tested versions).
 
 ---
 
+<a id="adb"></a>
+
 ## Appendix D — adb quick card
 
 *(typical outputs shown — this machine had no phone attached while writing,
@@ -931,6 +966,23 @@ so these weren't captured live; commands are standard platform tools)*
 - One change at a time — build + install + test after **each**.
 - Keep the **original APK untouched**; work only on copies.
 - Never distribute modded APKs.
+
+<a id="contributor-check"></a>
+
+## 🔧 Contributor self-check
+
+After **any** edit to this repo, run the repo's own verifier — it checks
+every TOC anchor, internal link, code fence balance, that every script the
+README mentions actually ships in `scripts/`, and that the pinned facts
+(versions + SHA256) stay **byte-identical** in README.md *and*
+COMMANDS.txt:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\readme-check.ps1
+# RESULT: 18/18 repo checks passed - guide is internally consistent.
+```
+
+Exit 0 = consistent, exit 1 = drift printed line by line.
 
 ## 📜 License
 
