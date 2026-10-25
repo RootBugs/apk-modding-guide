@@ -51,24 +51,32 @@ RULE OF THE ROAD
       +-- apk\     (pulled APKs land here)
       +-- work\    (decoded project - made by apktool d)
 
-    Wrapper files (one small .bat per tool):
+    Wrapper files - ready-made copies in the repo's scripts\ folder
+    (copy all four .bat into ApkMod). They find Java THEMSELVES via the
+    Temurin jdk-* glob, so they survive JDK updates AND stale terminals
+    (tested with PATH and with PATH stripped - both launch fine):
 
       :: apktool.bat
       @echo off
-      java -jar "%~dp0apktool_3.0.3.jar" %*
+      set "JAVA_EXE=java.exe"
+      for /d %%J in ("%ProgramFiles%\Eclipse Adoptium\jdk-*") do set "JAVA_EXE=%%J\bin\java.exe"
+      "%JAVA_EXE%" -jar "%~dp0apktool_3.0.3.jar" %*
 
-      :: uber-apk-signer.bat
+      :: uber-apk-signer.bat   (same idea, other jar)
       @echo off
-      java -jar "%~dp0uber-apk-signer-1.3.0.jar" %*
+      set "JAVA_EXE=java.exe"
+      for /d %%J in ("%ProgramFiles%\Eclipse Adoptium\jdk-*") do set "JAVA_EXE=%%J\bin\java.exe"
+      "%JAVA_EXE%" -jar "%~dp0uber-apk-signer-1.3.0.jar" %*
 
-      :: jadx.bat
+      :: jadx.bat   (delegates to jadx's own launcher; they read JAVA_HOME)
       @echo off
-      set "JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot"
+      set "JAVA_HOME="
+      for /d %%J in ("%ProgramFiles%\Eclipse Adoptium\jdk-*") do set "JAVA_HOME=%%J"
       call "%~dp0jadx\bin\jadx.bat" %*
 
     %~dp0 = the wrapper's own folder, so jars sit NEXT TO the .bat.
-    If "java" is not on PATH: pin the full path instead. Find it:
-      where java        (or: (Get-Command java).Source)
+    No Temurin / different JDK? Variables fall back to "java" on PATH,
+    or change the glob to your JDK folder.
 
     Optional - add ApkMod to PATH:
       Win+R -> sysdm.cpl -> Advanced -> Environment Variables
@@ -81,6 +89,41 @@ RULE OF THE ROAD
       uber-apk-signer -v     -> Version: 1.3.0
       java -version          -> openjdk version "21.0.12" ...
       adb version            -> Android Debug Bridge version 1.0.41
+
+ 1.5 VERIFY EVERYTHING AT ONCE - setup-check.ps1 (repo scripts\, copy
+     next to the tools), then:
+      powershell -ExecutionPolicy Bypass -File .\setup-check.ps1
+     It checks files, SHA256 of jars vs pinned releases, that each
+     wrapper really LAUNCHES, and PATH. Real result on our machine:
+      [ OK ] apktool_3.0.3.jar - sha256 matches pinned release
+      [ OK ] uber-apk-signer-1.3.0.jar - sha256 matches pinned release
+      [ OK ] apktool.bat launches -> 3.0.3
+      [ OK ] uber-apk-signer.bat launches -> Version: 1.3.0
+      [ OK ] jadx.bat launches -> 1.5.6
+      RESULT: 14/15 checks passed (1 warning(s) - read them above) - you are READY for Step 1.
+     Exit 0 = ready, 1 = fix the [FAIL] lines (each prints its fix).
+
+ 1.6 THE 60-SECOND DEMO - demo-run.ps1 (repo scripts\, copy next to
+     the tools). Runs decode -> locate label -> edit app name ->
+     rebuild -> sign on any APK YOU OWN, printing real output:
+      .\demo-run.ps1 C:\path\to\your-app.apk -NewLabel "My Mod"
+     Real transcript (our own test app), condensed:
+      ==== STAGE 1/5: DECODE ====  I: Using Apktool 3.0.3 ... I: Built ...
+      ==== STAGE 2/5: LOCATE LABEL ====
+        public.xml:876: <public type="string" name="app_name" id="0x7f0d001c" />
+        strings.xml:24: <string name="app_name">KWEN</string>
+      ==== STAGE 3/5: EDIT ====
+        app_name: 'KWEN'  ->  'KWEN DEMO'
+      ==== STAGE 4/5: REBUILD ====
+        I: Building resources with aapt2...  I: Built apk into: ...-demo.apk
+      ==== STAGE 5/5: SIGN ====
+        - zipalign verified
+        - signature verified [v2, v3]
+        Successfully processed 1 APKs and 0 errors in 0.72 seconds.
+      ==== DONE ====
+        SIGNED : ...-demo-aligned-debugSigned.apk
+     Work dir is work-demo (throwaway); delete it and the -demo.apk
+     files when done looking.
 
 ------------------------------------------------------------------
  SECTION 2 - THE PIPELINE (do in this order)

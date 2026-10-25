@@ -20,6 +20,8 @@ adb 1.0.41
 
 1. [Rules of the road](#️-rules-of-the-road)
 2. [One-time setup](#1️⃣-one-time-setup)
+   - [1.5 setup-check.ps1 — verify all at once](#15-verify-everything-at-once--setup-checkps1)
+   - [1.6 demo-run.ps1 — whole pipeline in one command](#16-the-60-second-demo--the-whole-pipeline-no-phone-needed)
 3. [Step 1 — Get the APK](#2️⃣-step-1--get-the-apk)
 4. [Step 2 — Study the code](#3️⃣-step-2--study-the-code-read-only)
 5. [Step 3 — Decode](#4️⃣-step-3--decode-into-editable-form)
@@ -86,39 +88,49 @@ C:\Users\<you>\ApkMod\
 ├── apktool_3.0.3.jar
 ├── uber-apk-signer-1.3.0.jar
 ├── jadx\bin\jadx.bat, jadx-gui.bat      ← from jadx-1.5.6.zip
-├── apktool.bat                          ← wrappers (below)
-├── jadx.bat / jadx-gui.bat
-├── uber-apk-signer.bat
-├── pull-apk.ps1                         ← from this repo, scripts/
+├── apktool.bat / jadx.bat / jadx-gui.bat /
+│   uber-apk-signer.bat                  ← from this repo, scripts\ (copy them)
+├── pull-apk.ps1                         ← from this repo, scripts\
+├── setup-check.ps1                      ← from this repo, scripts\ (verifies ALL of the above)
+├── demo-run.ps1                         ← from this repo, scripts\ (runs the whole pipeline)
 ├── apk\                                 ← pulled APKs land here
 └── work\                                ← decoded project (apktool d)
 ```
 
-**Wrappers** — one small `.bat` per tool so you never type `java -jar …`:
+**Wrappers** — ready-made copies live in [`scripts/`](scripts/) — copy all four
+`.bat` files into your `ApkMod` folder next to the jars. They are
+**JDK-upgrade-proof and stale-terminal-proof**: they find the Temurin
+`jdk-*` folder on disk instead of trusting PATH. (Tested twice: with PATH,
+and with PATH stripped — both launch fine.)
 
 ```bat
 @echo off
 rem apktool.bat
-java -jar "%~dp0apktool_3.0.3.jar" %*
+set "JAVA_EXE=java.exe"
+for /d %%J in ("%ProgramFiles%\Eclipse Adoptium\jdk-*") do set "JAVA_EXE=%%J\bin\java.exe"
+"%JAVA_EXE%" -jar "%~dp0apktool_3.0.3.jar" %*
 ```
 
 ```bat
 @echo off
-rem uber-apk-signer.bat
-java -jar "%~dp0uber-apk-signer-1.3.0.jar" %*
+rem uber-apk-signer.bat   (same idea, other jar)
+set "JAVA_EXE=java.exe"
+for /d %%J in ("%ProgramFiles%\Eclipse Adoptium\jdk-*") do set "JAVA_EXE=%%J\bin\java.exe"
+"%JAVA_EXE%" -jar "%~dp0uber-apk-signer-1.3.0.jar" %*
 ```
 
 ```bat
 @echo off
-rem jadx.bat  (jadx's own scripts look at JAVA_HOME, then PATH)
-set "JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot"
+rem jadx.bat   (delegates to jadx's own launcher; they read JAVA_HOME)
+set "JAVA_HOME="
+for /d %%J in ("%ProgramFiles%\Eclipse Adoptium\jdk-*") do set "JAVA_HOME=%%J"
 call "%~dp0jadx\bin\jadx.bat" %*
 ```
 
 > `%~dp0` = the wrapper's own folder, so the jars sit **next to** the `.bat`.
-> If `java` isn't on your PATH, pin the full path instead — find it with
-> `where java` (or `(Get-Command java).Source`), e.g.:
-> `"C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot\bin\java.exe" -jar "%~dp0apktool_3.0.3.jar" %*`
+> No Temurin on disk? The variables fall back to `java` on PATH.
+> Don't use another JDK? Change the `Eclipse Adoptium\jdk-*` glob to yours —
+> or just rely on PATH (`where java` shows what PATH sees).
 
 **Add `ApkMod` to PATH (optional):** `Win+R` → `sysdm.cpl` → Advanced →
 Environment Variables → *User variables* → `Path` → New → paste the folder.
@@ -137,6 +149,126 @@ adb version            # → Android Debug Bridge version 1.0.41
 (All five outputs above are real — from the machine this guide was written
 on. If any says `The term '…' is not recognized` → new terminal, or check the
 wrapper/PATH.)
+
+### 1.5 Verify everything at once — `setup-check.ps1`
+
+Rather than checking all of the above by hand, run the guide's own
+verifier (it lives in [`scripts/`](scripts/) — copy it into `ApkMod` next to
+the tools):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup-check.ps1
+```
+
+Real output from the machine this guide was written on:
+
+```
+Tool folder: C:\Users\hp\ApkMod
+
+[WARN] java not on THIS terminal PATH (Temurin found on disk)  -> found: C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot - open a NEW terminal; the wrappers work anyway
+[ OK ] adb on PATH: Android Debug Bridge version 1.0.41
+[ OK ] pull-apk.ps1 present
+[ OK ] setup-check.ps1 present
+[ OK ] apktool.bat present
+[ OK ] uber-apk-signer.bat present
+[ OK ] jadx.bat present
+[ OK ] jadx-gui.bat present
+[ OK ] jadx extracted (jadx\bin\jadx.bat found)
+[ OK ] apktool_3.0.3.jar - sha256 matches pinned release
+[ OK ] uber-apk-signer-1.3.0.jar - sha256 matches pinned release
+[ OK ] apktool.bat launches -> 3.0.3
+[ OK ] uber-apk-signer.bat launches -> Version: 1.3.0
+[ OK ] jadx.bat launches -> 1.5.6
+[ OK ] tool folder is in your user PATH
+
+RESULT: 14/15 checks passed (1 warning(s) - read them above) - you are READY for Step 1.
+```
+
+It checks: tools on PATH, every file present, **SHA256 of the jars against
+the pinned releases**, that each wrapper actually **launches** with the right
+version, and PATH visibility. Every `[FAIL]` line prints its own fix.
+Exit code 0 = ready, 1 = something's broken.
+
+> That `[WARN]` above is deliberate honesty: the shell it ran in had an old
+> PATH (opened before the JDK install). The wrappers don't care — they find
+> Java on disk — but `keytool` and plain `java` would fail **in that
+> terminal**, hence "open a NEW terminal".
+
+### 1.6 The 60-second demo — the whole pipeline, no phone needed
+
+`demo-run.ps1` (also in [`scripts/`](scripts/) — copy it into `ApkMod`) runs
+**decode → locate label → edit app name → rebuild → sign** on any APK you
+point it at, printing the real tool output at every stage. Use an APK **you
+own** — this is the whole guide in one command:
+
+```powershell
+.\demo-run.ps1 C:\path\to\your-app.apk -NewLabel "My Mod"
+```
+
+Real transcript (input: `kwen-release.apk` — my own app):
+
+```
+APK      : C:\Users\hp\Downloads\kwen-main\kwen-release.apk
+Work dir : C:\Users\hp\ApkMod\work-demo
+
+==== STAGE 1/5: DECODE ========================================================
+I: Using Apktool 3.0.3 on kwen-release.apk with 8 threads
+I: Loading resource table...
+I: Baksmaling classes.dex...
+I: Decoding value resources...
+I: Loading resource table from file: C:\Users\hp\AppData\Local\apktool\framework\1.apk
+I: Decoding file resources...
+I: Generating values XMLs...
+I: Decoding AndroidManifest.xml with resources...
+I: Copying original files...
+I: Copying assets...
+I: Copying unknown files...
+
+==== STAGE 2/5: LOCATE LABEL (res\values\*.xml + AndroidManifest.xml) =========
+  public.xml:876: <public type="string" name="app_name" id="0x7f0d001c" />
+  strings.xml:24: <string name="app_name">KWEN</string>
+  manifest: <application … android:label="@string/app_name" …>
+  manifest: <activity … android:label="@string/title_activity_main" …>
+
+==== STAGE 3/5: EDIT ==========================================================
+  app_name: 'KWEN'  ->  'KWEN DEMO'
+  written (UTF-8, no BOM): C:\Users\hp\ApkMod\work-demo\res\values\strings.xml
+
+==== STAGE 4/5: REBUILD =======================================================
+I: Smaling smali folder into classes.dex...
+I: Building resources with aapt2...
+I: Building apk file...
+I: Importing assets...
+I: Importing unknown files...
+I: Built apk into: C:\Users\hp\Downloads\kwen-main\kwen-release-demo.apk
+
+==== STAGE 5/5: SIGN ==========================================================
+01. kwen-release-demo.apk
+        SIGN
+        file: C:\Users\hp\Downloads\kwen-main\kwen-release-demo.apk (2.5 MiB)
+        - zipalign success
+        - sign success
+        VERIFY
+        file: C:\Users\hp\Downloads\kwen-main\kwen-release-demo-aligned-debugSigned.apk (2.56 MiB)
+        - zipalign verified
+        - signature verified [v2, v3]
+                Subject: CN=Android Debug, OU=Android, O=US, L=US, ST=US, C=US
+                Expires: Fri Mar 11 01:40:05 IST 2044
+Successfully processed 1 APKs and 0 errors in 0.72 seconds.
+
+==== DONE ============================================================
+  rebuilt : C:\Users\hp\Downloads\kwen-main\kwen-release-demo.apk
+  SIGNED  : C:\Users\hp\Downloads\kwen-main\kwen-release-demo-aligned-debugSigned.apk
+  edited app_name: yes
+
+  To install it on a phone (uninstall first if signatures differ):
+      adb uninstall com.your.app
+      adb install -r "C:\Users\hp\Downloads\kwen-main\kwen-release-demo-aligned-debugSigned.apk"
+```
+
+If you can read stage 2's output, **you already understand the guide** —
+that's the whole skill. Work dir is `work-demo` (throwaway): peek inside it,
+then delete it and the `-demo.apk` files whenever.
 
 ---
 
